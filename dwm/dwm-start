@@ -1,0 +1,751 @@
+#!/bin/bash
+
+#
+# dwm-start - a launcher for dwm.
+# Copyright (c) 2013-2015, Christopher Jeffrey (MIT License).
+# https://github.com/chjj/dwm
+#
+
+#
+# Variables
+#
+
+menu=0
+background=1
+
+#
+# Terminal
+#
+
+terminal='urxvt'
+if test -n "$(which x-terminal-emulator 2> /dev/null)"; then
+  terminal=$(readlink -f "$(which x-terminal-emulator)" | xargs basename)
+fi
+if test -n "$TERMINAL"; then
+  terminal=$TERMINAL
+fi
+
+#
+# User Agent
+#
+
+useragent='Mozilla/5.0'
+if test -n "$USER_AGENT"; then
+  useragent=$USER_AGENT
+fi
+
+#
+# Wallpaper
+#
+
+wallpaper=~/wallpaper.png
+if test -n "$WALLPAPER"; then
+  wallpaper=$WALLPAPER
+fi
+
+#
+# Background Color
+# e.g. black / #333333
+#
+
+bgcolor='#441111'
+if test -n "$BG_COLOR"; then
+  bgcolor=$BG_COLOR
+fi
+
+#
+# Run
+#
+
+run() {
+  if test -z "$1"; then
+    echo 'Enter a command.' >& 2
+    return 1
+  fi
+
+  if ! type "$1" > /dev/null 2>& 1 && test ! -x "$1"; then
+    echo 'Command not found.' >& 2
+    return 1
+  fi
+
+  if test $background -eq 1; then
+    cleanup
+    (setsid "$@" > /dev/null 2>& 1 &)
+  else
+    exec "$@"
+  fi
+}
+
+#
+# Unset variables that will confuse
+# another instance of tmux/screen.
+#
+
+cleanup() {
+  # tmux
+  unset TMUX
+  unset TMUX_PANE
+
+  # screen
+  unset STY
+  unset WINDOW
+
+  # These should already be deleted by our terminal we're
+  # starting, but let's delete them for good measure.
+  unset WINDOWID
+  unset TERMCAP
+  unset COLUMNS
+  unset LINES
+}
+
+#
+# Autorun
+#
+
+_autorun() {
+  background=1
+  # pidof irssi > /dev/null 2>& 1 && return 1
+  pidof weechat > /dev/null 2>& 1 && return 1
+  _wallpaper
+  _tmux
+  _mutt
+  _ncmpcpp
+  # _irssi
+  _weechat
+  _vim
+  _dwb
+}
+
+#
+# Programs
+# NOTE: tmux new = tmux new-session
+#
+
+_terminal() {
+  # run "$terminal" -name term "$@"
+  _tmux "$@"
+}
+
+_term() {
+  # _terminal "$@"
+  _tmux "$@"
+}
+
+_tmux() {
+  run "$terminal" -name tmux -T tmux -e tmux "$@"
+}
+
+_moc() {
+  run "$terminal" -name moc -T moc -e tmux new "mocp $@" \; set status off
+}
+
+_mocp() {
+  _moc "$@"
+}
+
+_ncmpcpp() {
+  pidof mpd > /dev/null 2>& 1 || mpd
+  run "$terminal" -name ncmpcpp -T ncmpcpp -e tmux new "ncmpcpp $@" \; set status off
+}
+
+_irssi() {
+  __irssi-server
+}
+
+_irssi-local() {
+  run "$terminal" -name irssi -T irssi -e tmux new "irssi $@" \; set status off
+}
+
+__irssi-server() {
+  local server='system76.public'
+  if test -e ~/.ssh/environment; then
+    . ~/.ssh/environment > /dev/null 2>& 1
+    server=$(ssh -o ConnectTimeout=4 system76 'echo system76' 2> /dev/null || \
+      ssh -o ConnectTimeout=8 system76.public 'echo system76.public' 2> /dev/null)
+  fi
+  run "$terminal" -name irssi -T irssi -e tmux new \
+    "bash -i -c 'exec ssh -t $server exec\\ bash\\ -i\\ -c\\ irssi-start'" \
+    \; set status off
+}
+
+_irssi-disconnect() {
+  ps aux \
+    | grep '[^co] ssh.*irssi-start' \
+    | grep -v grep \
+    | awk '{ print $2 }' \
+    | xargs kill
+}
+
+_weechat() {
+  __weechat-server
+}
+
+_weechat-local() {
+  run "$terminal" -name weechat -T weechat -e tmux new "weechat $@" \; set status off
+}
+
+__weechat-server() {
+  local server='system76.public'
+  if test -e ~/.ssh/environment; then
+    . ~/.ssh/environment > /dev/null 2>& 1
+    server=$(ssh -o ConnectTimeout=4 system76 'echo system76' 2> /dev/null || \
+      ssh -o ConnectTimeout=8 system76.public 'echo system76.public' 2> /dev/null)
+  fi
+  run "$terminal" -name weechat -T weechat -e tmux new \
+    "bash -i -c 'exec ssh -t $server exec\\ bash\\ -i\\ -c\\ weechat-start'" \
+    \; set status off
+}
+
+_weechat-disconnect() {
+  ps aux \
+    | grep '[^co] ssh.*weechat-start' \
+    | grep -v grep \
+    | awk '{ print $2 }' \
+    | xargs kill
+}
+
+# _weechat() {
+#   run "$terminal" -name weechat -T weechat -e tmux new "weechat $@" \; set status off
+# }
+
+_vim() {
+  run "$terminal" -name vim -T vim -e tmux new "vim $@" \; set status off
+}
+
+_mutt() {
+  run "$terminal" -name mutt -T mutt -e tmux new "mutt $@" \; set status off
+}
+
+_ssh() {
+  run "$terminal" -name ssh -T ssh -e tmux \
+    new "env TERM=rxvt-unicode-256color ssh $@" \; \
+    set default-terminal rxvt-unicode-256color \; \
+    set status off
+}
+
+_ttyclock() {
+  run "$terminal" -name ttyclock -T ttyclock -e tmux new "time.js $@" \; set status off
+}
+
+#
+# Apps
+#
+
+_chrome() {
+  # http://peter.sh/experiments/chromium-command-line-switches/
+  # https://www.google.com/search?q=chrome+extensions-on-chrome-urls
+  # https://plus.google.com/+FrancoisBeaufort/posts/LzAjXa7pmDY
+  # https://code.google.com/p/chromium/issues/detail?id=265810
+  # https://code.google.com/p/chromium/issues/detail?id=306654
+  # http://www.chromium.org/developers/design-documents/network-stack/socks-proxy
+  # https://www.google.com/search?q=chrome+socks+proxy
+
+  # --ignore-urlfetcher-cert-requests
+  # --extensions-on-chrome-urls
+  # --ignore-certificate-errors
+  # --embedded-extension-options
+  # --enable-embedded-extension-options
+  # --enable-experimental-extension-apis
+  # --extensions-not-webstore
+  # --show-component-extension-options
+  # --force-app-mode
+  # --no-sandbox
+  # --single-process
+  # --disable-web-security - no CORS
+  # chrome://flags
+  # --single-process - doesnt seem to work
+  # --incognito
+
+  # (setsid dwm-start _clean-chrome > /dev/null 2>& 1 &)
+
+  _clear-data 0.5 chromium
+
+  local args=(
+    --extensions-on-chrome-urls \
+    --enable-experimental-extension-apis \
+    --ignore-certificate-errors \
+    --no-referrers \
+    --no-pings \
+    --memory-model=low \
+    --disable-plugins \
+    --enable-webgl \
+    --ignore-gpu-blacklist \
+    "--user-agent=$useragent"
+  )
+
+  local i=${#args[@]}
+
+  while test $# -gt 0; do
+    if test "$1" = '-i'; then
+      args[i++]='--incognito'
+    elif test "$1" = '-p'; then
+      # test -z "$SOCKS_PORT" && SOCKS_PORT=1080
+      # args[i++]="--proxy-server=socks5://localhost:${SOCKS_PORT}"
+      args[i++]='--proxy-server=socks5://localhost:1080'
+      args[i++]='--host-resolver-rules=MAP * 0.0.0.0 , EXCLUDE localhost'
+    else
+      args[i++]=$1
+    fi
+    shift
+  done
+
+  run chromium "${args[@]}"
+}
+
+_firefox() {
+  _clear-data 0.5 firefox
+  local args=()
+  local i=${#args[@]}
+  while test $# -gt 0; do
+    if test "$1" = '-i'; then
+      args[i++]='-private'
+    else
+      args[i++]=$1
+    fi
+    shift
+  done
+  GTK2_RC_FILES=/usr/share/themes/Default/gtk-2.0-key/gtkrc \
+    run firefox \
+    "${args[@]}"
+}
+
+_gimp() {
+  run gimp "$@"
+}
+
+_qemu() {
+  local p=$(pidof qemu-system-x86_64 | wc -w)
+  test -n "$QINDEX" && p=$QINDEX
+
+  # local index=$(__qemu-index "${@: -1}")
+  #  if test -n "$index"; then
+  #    echo 'Already started. SSHing...'
+  #    _qemu-ssh "$index"
+  #    return 0
+  #  fi
+
+  QEMU_AUDIO_DRV=pulse \
+  SDL_VIDEO_X11_DGAMOUSE=0 \
+  run qemu-system-x86_64 \
+    -usbdevice tablet \
+    -enable-kvm -m 512 -boot c -vga vmware -soundhw ac97 \
+    -uuid 00000000-0000-0000-0000-000000000000 \
+    -net nic,model=rtl8139,macaddr=00:00:00:00:00:$((0 + p)) \
+    -net user,$(
+      echo -n hostfwd=::$((2022 + p))-:22,
+      echo -n hostfwd=::$((7984 + p))-:5984,
+      echo -n hostfwd=::$((10080 + p))-:8080,
+      echo -n hostfwd=::$((20081 + p))-:8081,
+      echo -n hostfwd=::$((11050 + p))-:9050
+    ) \
+    "$@"
+}
+
+_qemu-term() {
+  run "$terminal" -name qemu-term -T qemu-term \
+    -g 80x25 -e dwm-start qemu-curses "$@"
+}
+
+_qemu-curses() {
+  background=0
+  _qemu -curses "$@"
+}
+
+_qemu-list() {
+  background=0
+  ps aux \
+    | grep qemu-system-x86_64 \
+    | grep '::20[2-9][0-9].*[^ ]\+$' \
+    | sed 's/^[^ ]\+ \+\([0-9]\+\).\+::\(20[2-9][0-9]\).\+ \([^ ]\+\)$/(\2) \3 pid=\1/g' \
+    | sort \
+    | awk '{ printf("%d: %s\n", NR - 1, $0) }' \
+    | sed "s;$HOME;~;g"
+}
+
+_qemu-bg() {
+  _qemu -nographic "$@"
+}
+
+_qemu-ssh() {
+  local p=$1
+  test -z "$p" && return 1
+
+  # Check the file - avoid booting up the same machine
+  local index=$(__qemu-index "${@: -1}")
+  if test -n "$index"; then
+    echo 'Already started. SSHing...'
+    p=$index
+  fi
+
+  # Make sure the first arg is a number, if not, assume it's a file.
+  if ! echo "$p" | grep -q '^[0-9]\+$'; then
+    p=$(pidof qemu-system-x86_64 | wc -w)
+    test -n "$QINDEX" && p=$QINDEX
+    _qemu-bg "$@"
+    sleep 5
+  fi
+
+  # Clear the known hosts
+  echo "$(grep -v '^\[localhost\]:20' ~/.ssh/known_hosts)" > ~/.ssh/known_hosts
+
+  # Run this in the foreground of the terminal
+  background=0
+
+  # If we want to ssh in as a normal user
+  if test -n "$SSH_NUSER"; then
+    run ssh -p $((2022 + p)) user@localhost
+    return 0
+  fi
+
+  run ssh -p $((2022 + p)) root@localhost
+}
+
+_qemu-user() {
+  SSH_NUSER=1
+  _qemu-ssh "$@"
+}
+
+_qemu-stop() {
+  run ssh "root@q${1}" 'systemctl poweroff'
+}
+
+__qemu-index() {
+  local file=$1
+  file=$(echo "$file" | sed "s;^~;$HOME;")
+  echo "$file" | grep -q '^[0-9]\+$' && return 0
+  local bg=$background
+  local index line n f
+  while IFS=$'\n' read line; do
+    n=$(echo "$line" | awk '{ print $1 }' | sed 's/://')
+    f=$(echo "$line" \
+      | awk '{ $1="";$2="";$4=""; print $_ }' \
+      | sed 's/^ \+\| \+$//g' \
+      | sed "s;^~;$HOME;")
+    # test "$file" = "$f" && index=$n && break
+    test "$(basename "$file")" = "$(basename "$f")" && index=$n && break
+  done < <(_qemu-list)
+  background=$bg
+  test -n "$index" && echo "$index"
+}
+
+_vnc() {
+  _stop-vnc > /dev/null
+  sleep 2
+  . ~/.ssh/environment > /dev/null 2>& 1
+  ssh -fTNL 4900:127.0.0.1:5900 "$@"
+  sleep 3
+  run vncviewer -passwd ~/.vnc/passwd localhost:4900
+}
+
+_vnc-stop() {
+  killall vncviewer 2> /dev/null
+  ps aux | grep 'ssh -fTNL' \
+    | grep -v grep | head -n 1 \
+    | awk '{ print $2 }' | xargs kill 2> /dev/null
+}
+
+_skype() {
+  # run start-skype "$@"
+  _qemu -localtime ~/.qemu/windows7.qcow2
+}
+
+_dwb() {
+  _clear-data 0.5 dwb
+  local args=()
+  local i=${#args[@]}
+  while test $# -gt 0; do
+    if test "$1" = '-i'; then
+      args[i++]='-n'
+      args[i++]='--temp-profile'
+    else
+      args[i++]=$1
+    fi
+    shift
+  done
+  run dwb "${args[@]}"
+}
+
+_dwb-open() {
+  local args=()
+  local i=${#args[@]}
+  local incognito=0
+  local pid
+  while test $# -gt 0; do
+    if test "$1" = '-i'; then
+      incognito=1
+    else
+      args[i++]=$1
+    fi
+    shift
+  done
+  if test $incognito -eq 0; then
+    pid=$(ps aux | grep ':[0-9][0-9] dwb$' \
+      | grep -v grep | awk '{ print $2 }')
+  else
+    pid=$(ps aux | grep -- 'dwb.*--temp-profile' \
+      | grep -v grep | awk '{ print $2 }')
+  fi
+  run dwbremote -p "$pid" ":tabopen ${args[@]}"
+}
+
+_uo() {
+  run wine C:/Razor/Razor.exe
+}
+
+_wow() {
+  run wine C:/WoW/Launcher.exe -opengl
+}
+
+_virtualbox() {
+  run virtualbox "$@"
+}
+
+_book() {
+  # Could use `-fa 'Deja Vu Sans Mono:pixelsize=20:antialias=true'`
+  # run urxvt -font '-*-terminus-medium-*-*-*-24-*-*-*-*-*-*-*' -e vim -c ':set ro' "$@"
+  run urxvt -font '-*-terminus-medium-*-*-*-24-*-*-*-*-*-*-*' -e less "$@"
+}
+
+_book-html() {
+  # Could use `-fa 'Deja Vu Sans Mono:pixelsize=20:antialias=true'`
+  run urxvt -font '-*-terminus-medium-*-*-*-24-*-*-*-*-*-*-*' \
+    -e w3m -I UTF-8 -T text/html "$@"
+}
+
+#
+# Utils
+#
+
+_wallpaper() {
+  local file="$1"
+  test -z "$file" && file="$wallpaper"
+  if test -f "$file"; then
+    feh --bg-scale "$file"
+    # hsetroot -full "$file"
+  else
+    test -n "$1" && bgcolor="$1"
+    xsetroot -solid "$bgcolor"
+    # hsetroot -solid "$bgcolor"
+    hsetroot -add "$bgcolor" -add '#110000' -gradient 0
+    # mkdir ~/wallpapers
+    # # file="$HOME/wallpapers/$(echo "$bgcolor" | sed 's/^#//').png"
+    # # hsetroot -solid "$bgcolor" -write "$file"
+    # local file="$HOME/wallpapers/$(echo "$bgcolor" | sed 's/^#//')-gradient.png"
+    # hsetroot -add "$bgcolor" -add '#110000' -gradient 0 -write "$file"
+    # feh --bg-scale "$file"
+    # # hsetroot -full "$file"
+  fi
+}
+
+_big-clock() {
+  run xclock -digital -strftime '%l:%M%P' \
+    -face 'Deja Vu Sans Mono:pixelsize=400:antialias=true'
+}
+
+_slock() {
+  exec slock
+}
+
+_lock() {
+  exec slock
+}
+
+_clear-data() {
+  local dir
+  local timeout=$1
+  local browser=$2
+
+  # Chromium
+  if test x"$browser" = x'chromium' -o -z "$browser"; then
+    for dir in ~/.config/chromium/Default ~/.config/google-chrome/Default; do
+      pushd "$dir" &> /dev/null
+      if test "$(pwd)" != "$dir"; then
+        continue
+      fi
+      # Safe:
+      rm -rf 'Cookies' 'Cookies-journal'
+      # Unknown:
+      # rm -rf File\ System/*
+      # #rm -rf File\ System/000/*
+      # Original:
+      # rm -rf 'Cookies' 'Cookies-journal' 'Web Data' 'Web Data-journal'
+      # Bad:
+      # rm -rf 'Cookies' 'Cookies-journal' 'Web Data' 'Web Data-journal' \
+      #   'Login Data' 'Login Data-journal' 'Archived History' \
+      #   'Archived History-journal' 'History' 'History-journal' \
+      #   'History Provider Cache' 'Top Sites' 'Top Sites-journal' 'Visited Links' \
+      #   'Application Cache' 'Last Session' 'Last Tabs' 'Favicons' \
+      #   'Favicons-journal' 'Current Tabs' 'Current Session' 'Session Storage' \
+      #   'databases' 'Network Action Predictor' 'Network Action Predictor-journal' \
+      #   'QuotaManager' 'QuotaManager-journal'
+      find 'Local Storage/' -print0 \
+        | grep -z -Z -v '^Local Storage/chrome-extension_\|^Local Storage/$' \
+        | xargs -0 rm -rf
+      popd &> /dev/null
+    done
+  fi
+
+  # Chrome
+  if test x"$browser" = x'chrome' -o -z "$browser"; then
+    for dir in ~/.config/chromium/ ~/.config/google-chrome/; do
+      if test "$(pwd)" != "$dir"; then
+        continue
+      fi
+      pushd "$dir" &> /dev/null
+      # Safe:
+      rm -rf 'Safe Browsing Cookies' 'Safe Browsing Cookies-journal'
+      # Unknown:
+      # rm -rf File\ System/*
+      # #rm -rf File\ System/000/*
+      # Original:
+      # rm -rf 'Safe Browsing Cookies' 'Safe Browsing Cookies-journal'
+      # Bad:
+      # rm -rf 'Safe Browsing Cookies' 'Safe Browsing Cookies-journal' \
+      #   'Crash Reports' 'Local State' .org.chromium.* 'Service State'
+      popd &> /dev/null
+    done
+  fi
+
+  # Firefox
+  if test x"$browser" = x'firefox' -o -z "$browser"; then
+    rm -rf ~/.mozilla/firefox/*.default/{cookies,formhistory,healthreport,places,signons,webappsstore}.sqlite \
+      ~/.mozilla/firefox/*.default/storage/persistent/moz-safe-about+home/idb/*
+  fi
+
+  # rm -rf ~/.mozilla/firefox/*.default/cookies.sqlite
+  # rm -rf ~/.mozilla/firefox/*.default/storage
+  # rm -rf ~/.mozilla/firefox/*.default/webapps
+  # rm -rf ~/.mozilla/firefox/*.default/search.json
+
+  # #rm -rf ~/.mozilla/firefox/*.default/healthreport
+  # #rm -rf ~/.mozilla/firefox/*.default/key3.db
+
+  # DWB
+  if test x"$browser" = x'dwb' -o -z "$browser"; then
+    find ~/.config/dwb -name '[0-9]*' -print0 | xargs -0 rm -rf
+  fi
+
+  if test -n "$timeout"; then
+    sleep "$timeout"
+  fi
+}
+
+#
+# Main
+#
+
+__get_cmds() {
+  grep '^_[-a-z]\+()' "$0" \
+    | sed 's/[ _(){]//g' \
+    | sed 's/^\([-a-z]\+\)/\1\nt.\1/g' \
+    | sort
+}
+
+main() {
+  local cmd name
+
+  # _clear-data
+
+  local c=$(test "$1" = "menu" && echo "$2" || echo "$1")
+  if echo "$c" | grep -q '\.qcow2$'; then
+    set -- 'qemu-ssh' "$@"
+  fi
+
+  cmd="$1"
+
+  if test "$cmd" = "commands"; then
+    __get_cmds
+    exit 0
+  fi
+
+  if test "$cmd" = 'menu'; then
+    shift
+    menu=1
+    background=0
+
+    cmd=$(__get_cmds | dmenu "$@")
+    test -z "$cmd" && exit 0
+
+    if echo "$cmd" | grep -q '^t\.'; then
+      cmd=$(echo "$cmd" | sed 's/^t\.//')
+      # Chrome doesn't work with tsocks - use native args
+      if echo "$cmd" | grep -q '^chrome'; then
+        cmd="$cmd -p"
+      else
+        . tsocks on
+      fi
+    fi
+
+    name=$(echo "$cmd" | awk '{ print $1 }')
+    if type "_${name}" > /dev/null 2>& 1; then
+      eval "_${cmd}"
+    else
+      eval "exec $cmd"
+    fi
+
+    exit 0
+  fi
+
+  if test "$cmd" = '-fg'; then
+    shift
+    background=0
+    cmd="$1"
+  fi
+
+  if echo "$cmd" | grep -q '^t\.'; then
+    cmd=$(echo "$cmd" | sed 's/^t\.//')
+    # Chrome doesn't work with tsocks - use native args
+    if echo "$cmd" | grep -q '^chrome'; then
+      shift
+      set -- 'chrome' '-p' "$@"
+    else
+      . tsocks on
+    fi
+  fi
+
+  name=$(echo "$cmd" | awk '{ print $1 }')
+  if type "_${name}" > /dev/null 2>& 1; then
+    shift
+    "_${cmd}" "$@"
+  else
+    run "$@"
+  fi
+}
+
+#
+# Completion
+# eval "$(dwm-start _complete)"
+#
+
+__dstart() {
+  local cur=${COMP_WORDS[-1]}
+  if test ${#COMP_WORDS[@]} -gt 2; then
+    _command "$@"
+    return $?
+  fi
+  if echo "$cur" | grep -q '/'; then
+    # echo "$cur" | grep -q '\.qcow2$' && cur="$(dirname "$cur")/"
+    # COMPREPLY=$(compgen -f -o plusdirs "$cur" | grep "^$cur")
+    # _command "$@"
+    return $?
+  fi
+  local cmds=$(grep '^_[-a-z]\+()' "__FILE__" \
+    | sed 's/[ _(){]//g' \
+    | sed 's/^\([-a-z]\+\)/\1\nt.\1/g' \
+    | sort \
+    | grep "^$cur")
+  COMPREPLY=($cmds)
+  return 0
+}
+
+__complete() {
+  type __dstart | sed 1d | sed "s;__FILE__;$(readlink -f "$0");"
+  echo 'complete -F __dstart dwm-start'
+  echo 'complete -F __dstart ds'
+}
+
+#
+# Execute
+#
+
+main "$@"
